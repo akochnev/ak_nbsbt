@@ -23,7 +23,7 @@ import sbt.{
   Configuration,
   Configurations,
   Extracted,
-  EvaluateConfig,
+  //  EvaluateConfig,
   EvaluateTask,
   File,
   Inc,
@@ -38,9 +38,9 @@ import sbt.{
   Task,
   Value
 }
-import sbt.Load.BuildStructure
+import sbt.internal.BuildStructure
 import sbt.complete.Parser
-import scalaz.{Equal, NonEmptyList, Validation => ScalazValidation}
+import scalaz.{ Equal, NonEmptyList, Validation => ScalazValidation }
 import scalaz.Scalaz._
 
 package object core {
@@ -63,14 +63,14 @@ package object core {
   def setting[A](key: SettingKey[A], state: State): Validation[A] =
     key get structure(state).data match {
       case Some(a) => a.success
-      case None    => "Undefined setting '%s'!".format(key.key).failNel
+      case None => "Undefined setting '%s'!".format(key.key).failureNel
     }
 
   def evaluateTask[A](key: TaskKey[A], ref: ProjectRef, state: State): Validation[A] =
-    EvaluateTask(structure(state), key, state, ref, EvaluateTask defaultConfig state) match {
+    EvaluateTask(structure(state), key, state, ref, EvaluateTask.extractedTaskConfig(Project.extract(state), structure(state), state)) match {
       case Some((_, Value(a))) => a.success
-      case Some((_, Inc(inc))) => "Error evaluating task '%s': %s".format(key.key, Incomplete.show(inc.tpe)).failNel
-      case None                => "Undefined task '%s' for '%s'!".format(key.key, ref.project).failNel
+      case Some((_, Inc(inc))) => "Error evaluating task '%s': %s".format(key.key, Incomplete.show(inc.tpe)).failureNel
+      case None => "Undefined task '%s' for '%s'!".format(key.key, ref.project).failureNel
     }
 
   def extracted(state: State): Extracted = Project.extract(state)

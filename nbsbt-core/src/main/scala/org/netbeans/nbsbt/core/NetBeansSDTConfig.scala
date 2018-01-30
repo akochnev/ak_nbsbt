@@ -11,7 +11,7 @@ private trait NetBeansSDTConfig {
 
   private lazy val aggregate: ArgumentConsumer = {
     case done @ (_, Seq()) => done
-    case formerResult      => aggregate(consumeOptionsFrom(formerResult) getOrElse formerResult)
+    case formerResult => aggregate(consumeOptionsFrom(formerResult) getOrElse formerResult)
   }
 
   private lazy val consumeOptionsFrom = supportedOptions.foldRight(Unsupported.classify)(_.classify orElse _).lift
@@ -52,8 +52,7 @@ private trait NetBeansSDTConfig {
     TakesArg("Yrecursion"),
     Flag("Yself-in-annots"),
     ColonSeparated("Ystruct-dispatch"),
-    Flag("Ywarn-dead-code")
-  )
+    Flag("Ywarn-dead-code"))
 
   private sealed trait SDTOption {
     def name: String
