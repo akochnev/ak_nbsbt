@@ -42,9 +42,10 @@ trait NetBeansPlugin {
 
   def netbeansSettings: Seq[Setting[_]] = {
     import NetBeansKeys._
+
     Seq(
       commandName := "netbeans",
-      commands += commandName.value)
+      commands += NetBeans.netbeansCommand(commandName.value))
   }
 
   object NetBeansKeys {

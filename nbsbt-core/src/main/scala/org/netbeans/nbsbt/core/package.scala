@@ -44,6 +44,10 @@ import sbt.io.RichFile
 import sbt.complete.Parser
 import scalaz.{ Equal, NonEmptyList, Validation => ScalazValidation }
 import scalaz.Scalaz._
+import scalaz._
+import scalaz.syntax.ValidationOps
+import scalaz.syntax.ValidationOps._
+import scalaz.syntax.validation._
 
 package object core {
 
@@ -64,16 +68,20 @@ package object core {
 
   def setting[A](key: SettingKey[A], state: State): Validation[A] =
     key get structure(state).data match {
-      case Some(a) => a.success
-      case None => "Undefined setting '%s'!".format(key.key).failNel
+      case Some(a) => Validation.success(a)
+      case None => Validation.failureNel("Undefined setting '%s'!".format(key.key))
     }
 
-  def evaluateTask[A](key: TaskKey[A], ref: ProjectRef, state: State): Validation[A] =
-    EvaluateTask(structure(state), key, state, ref, EvaluateTask defaultConfig state) match {
-      case Some((_, Value(a))) => a.success
-      case Some((_, Inc(inc))) => "Error evaluating task '%s': %s".format(key.key, Incomplete.show(inc.tpe)).failNel
-      case None => "Undefined task '%s' for '%s'!".format(key.key, ref.project).failNel
+  def evaluateTask[A](key: TaskKey[A], ref: ProjectRef, state: State): Validation[A] = {
+    val extracted = Project.extract(state)
+    val defaultCfg = EvaluateTask.extractedTaskConfig(extracted, extracted.structure, state)
+
+    EvaluateTask(structure(state), key, state, ref, defaultCfg) match {
+      case Some((_, Value(a))) => Validation.success(a)
+      case Some((_, Inc(inc))) => Validation.failureNel("Error evaluating task '%s': %s".format(key.key, Incomplete.show(inc.tpe)))
+      case None => Validation.failureNel("Undefined task '%s' for '%s'!".format(key.key, ref.project))
     }
+  }
 
   def extracted(state: State): Extracted = Project.extract(state)
 
