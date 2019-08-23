@@ -21,6 +21,17 @@ package org.netbeans.nbsbt.plugin
 import org.netbeans.nbsbt.core.{ NetBeansPlugin => CoreNetBeansPlugin }
 import sbt.{ AutoPlugin, Setting }
 
-object NetBeansPlugin extends AutoPlugin with CoreNetBeansPlugin {
-  override def settings: Seq[Setting[_]] = CoreNetBeansPlugin.netbeansSettings
+object NetBeansPlugin extends AutoPlugin {
+  override def requires = sbt.plugins.JvmPlugin
+  override def trigger = allRequirements
+
+  // Auto import semantics users expect today.
+  val autoImport: CoreNetBeansPlugin.type = CoreNetBeansPlugin
+  override def projectSettings: Seq[Setting[_]] = CoreNetBeansPlugin.netbeansSettings
+
+  val NetBeansKeys = CoreNetBeansPlugin.NetBeansKeys
+  val NetBeansCreateSrc = CoreNetBeansPlugin.NetBeansCreateSrc
+  val NetBeansExecutionEnvironment = CoreNetBeansPlugin.NetBeansExecutionEnvironment
+  val NetBeansClasspathEntry = CoreNetBeansPlugin.NetBeansClasspathEntry
+
 }

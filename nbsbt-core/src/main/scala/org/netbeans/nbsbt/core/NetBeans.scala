@@ -38,7 +38,10 @@ import sbt.{
   Command,
   Configuration,
   Configurations,
+  EvaluateTask,
   File,
+  Inc,
+  Incomplete,
   IO,
   Keys,
   ModuleID,
@@ -50,20 +53,22 @@ import sbt.{
   State,
   TaskKey,
   ThisBuild,
-  UpdateReport
+  UpdateReport,
+  Value
 }
-import sbt.io.RichFile
+import sbt.fileToRichFile
+import sbt.internal.BuildStructure
 import sbt.complete.Parser
 import scala.xml.{ Node, PrettyPrinter }
 import scala.xml.transform.{ RewriteRule, RuleTransformer }
 import scalaz.{ Failure, NonEmptyList, Success }
 import scalaz.Validation.FlatMap._
-import scalariform.formatter.preferences.PreferenceDescriptor
+// import scalariform.formatter.preferences.PreferenceDescriptor
 import scalaz.Scalaz._
 import scalaz.effect._
 import scalaz.std.tuple._
 //import com.typesafe.sbt.SbtScalariform.ScalariformKeys
-import scalariform.formatter.preferences.FormattingPreferences
+// import scalariform.formatter.preferences.FormattingPreferences
 
 private object NetBeans extends NetBeansSDTConfig {
   val SettingFormat = """-([^:]*):?(.*)""".r
@@ -108,6 +113,7 @@ private object NetBeans extends NetBeansSDTConfig {
       (args get ExecutionEnvironment).asInstanceOf[Option[NetBeansExecutionEnvironment.Value]],
       (args get SkipParents).asInstanceOf[Option[Boolean]] getOrElse skipParents(ThisBuild, state),
       (args get WithSource).asInstanceOf[Option[Boolean]],
+      // (args get WithJavadoc).asInstanceOf[Option[Boolean]],
       (args get GenNetBeans).asInstanceOf[Option[Boolean]] getOrElse true,
       state).fold(onFailure(state), onSuccess(state))
   }
@@ -116,6 +122,7 @@ private object NetBeans extends NetBeansSDTConfig {
     executionEnvironmentArg: Option[NetBeansExecutionEnvironment.Value],
     skipParents: Boolean,
     withSourceArg: Option[Boolean],
+    // withJavadocArg: Option[Boolean],
     genNetBeans: Boolean,
     state: State): Validation[IO[Seq[String]]] = {
     val effects = for {
@@ -124,42 +131,28 @@ private object NetBeans extends NetBeansSDTConfig {
     } yield {
       val configs = configurations(ref, state)
 
-      for {
-        classpathEntryTransformer <- classpathEntryTransformerFactory(ref, state).createTransformer(ref, state)
-        classpathTransformers <- (classpathTransformerFactories(ref, state).toList map (_.createTransformer(ref, state))).sequence[Validation, RewriteRule]
-        projectTransformers <- (projectTransformerFactories(ref, state).toList map (_.createTransformer(ref, state))).sequence[Validation, RewriteRule]
-        name <- name(ref, state)
-        projectId <- projectId(ref, state)
-        buildDirectory <- buildDirectory(state)
-        baseDirectory <- baseDirectory(ref, state)
-        srcDirectories <- mapConfigurations(configs, config => srcDirectories(ref, createSrc(ref, state)(config), netbeansOutput(ref, state)(config), state)(config))
-        scalacOptions <- scalacOptions(ref, state)
-        //        scalariformPreferences <- mapConfigurations(configs, scalariformPreferences(ref, state))
-        externalDependencies <- mapConfigurations(configs, externalDependencies(ref, withSourceArg getOrElse withSource(ref, state), state))
-        projectDependencies <- mapConfigurations(configs, projectDependencies(ref, project, state))
-        projectAggregate <- projectAggregate(ref, project, state)
-      } yield {
+      val applic =
+        (classpathTransformerFactories(ref, state).toList map (_.createTransformer(ref, state))).sequence[Validation, RewriteRule] |@|
+          (projectTransformerFactories(ref, state).toList map (_.createTransformer(ref, state))).sequence[Validation, RewriteRule] |@|
+          name(ref, state) |@|
+          projectId(ref, state) |@|
+          buildDirectory(state) |@|
+          baseDirectory(ref, state) |@|
+          mapConfigurations(configs, config => srcDirectories(ref, createSrc(ref, state)(config), netbeansOutput(ref, state)(config), state)(config)) |@|
+          scalacOptions(ref, state) |@|
+          mapConfigurations(configs, externalDependencies(ref, withSourceArg getOrElse withSource(ref, state), state)) |@|
+          mapConfigurations(configs, projectDependencies(ref, project, state)) |@|
+          projectAggregate(ref, project, state)
+
+      applic(
         handleProject(
           jreContainer(executionEnvironmentArg orElse executionEnvironment(ref, state)),
           preTasks(ref, state),
           relativizeLibs(ref, state),
           builderAndNatures(projectFlavor(ref, state)),
           genNetBeans,
-          state)(
-            classpathEntryTransformer,
-            classpathTransformers,
-            projectTransformers,
-            name,
-            projectId,
-            buildDirectory,
-            baseDirectory,
-            srcDirectories,
-            scalacOptions,
-            //            scalariformPreferences,
-            externalDependencies,
-            projectDependencies,
-            projectAggregate)
-      }
+          state))
+
     }
     effects.toList.sequence[Validation, IO[String]].map((list: List[IO[String]]) => list.toStream.sequence.map(_.toList))
   }
@@ -213,7 +206,7 @@ private object NetBeans extends NetBeansSDTConfig {
     builderAndNatures: (String, Seq[String]),
     genNetBeans: Boolean,
     state: State)(
-    classpathEntryTransformer: Seq[NetBeansClasspathEntry] => Seq[NetBeansClasspathEntry],
+    //classpathEntryTransformer: Seq[NetBeansClasspathEntry] => Seq[NetBeansClasspathEntry],
     classpathTransformers: Seq[RewriteRule],
     projectTransformers: Seq[RewriteRule],
     name: String,
@@ -230,9 +223,9 @@ private object NetBeans extends NetBeansSDTConfig {
       _ <- executePreTasks(preTasks, state)
       n <- io(name)
       srcDirs <- splitSrcDirectories(srcDirectories, baseDirectory)
-      _ <- if (genNetBeans) io(()) else saveXml(new RichFile(baseDirectory) / ".project", new RuleTransformer(projectTransformers: _*)(projectXml(name, builderAndNatures)))
+      _ <- if (genNetBeans) io(()) else saveXml(baseDirectory / ".project", new RuleTransformer(projectTransformers: _*)(projectXml(name, builderAndNatures)))
       cp <- classpath(
-        classpathEntryTransformer,
+        // classpathEntryTransformer,
         name,
         projectId,
         buildDirectory,
@@ -246,28 +239,15 @@ private object NetBeans extends NetBeansSDTConfig {
         //        scalariformPreferences,
         genNetBeans,
         state)
-      _ <- if (genNetBeans) saveXml(new RichFile(baseDirectory) / ".classpath_nb", cp) else saveXml(new RichFile(baseDirectory) / ".classpath", new RuleTransformer(classpathTransformers: _*)(cp))
+      _ <- if (genNetBeans) saveXml(baseDirectory / ".classpath_nb", cp) else saveXml(baseDirectory / ".classpath", new RuleTransformer(classpathTransformers: _*)(cp))
       _ <- if (genNetBeans) io(())
       else saveProperties(
-        new RichFile(new RichFile(baseDirectory) / ".settings") / "org.scala-ide.sdt.core.prefs", scalacOptions)
+        baseDirectory / ".settings" / "org.scala-ide.sdt.core.prefs", scalacOptions)
     } yield n
   }
 
   def executePreTasks(preTasks: Seq[(TaskKey[_], ProjectRef)], state: State): IO[Unit] =
     io(for ((preTask, ref) <- preTasks) evaluateTask(preTask, ref, state))
-
-  def projectXml(name: String, builderAndNatures: (String, Seq[String])): Node =
-    <projectDescription>
-      <name>{ name }</name>
-      <buildSpec>
-        <buildCommand>
-          <name>{ builderAndNatures._1 }</name>
-        </buildCommand>
-      </buildSpec>
-      <natures>
-        { builderAndNatures._2.map(n => <nature>{ n }</nature>) }
-      </natures>
-    </projectDescription>
 
   def createLinkName(file: File, baseDirectory: File): String = {
     val name = file.getCanonicalPath
@@ -297,7 +277,7 @@ private object NetBeans extends NetBeansSDTConfig {
   }
 
   def classpath(
-    classpathEntryTransformer: Seq[NetBeansClasspathEntry] => Seq[NetBeansClasspathEntry],
+    // classpathEntryTransformer: Seq[NetBeansClasspathEntry] => Seq[NetBeansClasspathEntry],
     name: String,
     projectId: String,
     buildDirectory: File,
@@ -326,8 +306,8 @@ private object NetBeans extends NetBeansSDTConfig {
         (Seq(jreContainer) map NetBeansClasspathEntry.Con) ++
         (Seq("bin") map NetBeansClasspathEntry.Output) //++
       //        (scalariformPreferences map { case (config, prefs) => prefs map { case (k, v) => NetBeansClasspathEntry.ScalariformEntry(config.name, k.key, v) } }).flatten
-      if (genNetBeans) <classpath name={ name } id={ projectId }>{ classpathEntryTransformer(entries) map (_.toXmlNetBeans) }</classpath>
-      else <classpath>{ classpathEntryTransformer(entries) map (_.toXml) }</classpath>
+      if (genNetBeans) <classpath name={ name } id={ projectId }>{ entries map (_.toXmlNetBeans) }</classpath>
+      else <classpath>{ entries map (_.toXml) }</classpath>
     }
   }
 
@@ -597,10 +577,13 @@ private object NetBeans extends NetBeansSDTConfig {
   def withSource(ref: Reference, state: State): Boolean =
     setting(NetBeansKeys.withSource in ref, state).fold(_ => false, id)
 
-  def classpathEntryTransformerFactory(ref: Reference, state: State): NetBeansTransformerFactory[Seq[NetBeansClasspathEntry] => Seq[NetBeansClasspathEntry]] =
-    setting(NetBeansKeys.classpathEntryTransformerFactory in ref, state).fold(
-      _ => NetBeansClasspathEntryTransformerFactory.Identity,
-      id)
+  def withJavadoc(ref: Reference, state: State): Boolean =
+    setting(NetBeansKeys.withJavadoc in ref, state).fold(_ => false, id)
+
+  // def classpathEntryTransformerFactory(ref: Reference, state: State): NetBeansTransformerFactory[Seq[NetBeansClasspathEntry] => Seq[NetBeansClasspathEntry]] =
+  //   setting(NetBeansKeys.classpathEntryTransformerFactory in ref, state).fold(
+  //     _ => NetBeansClasspathEntryTransformerFactory.Identity,
+  //     id)
 
   def classpathTransformerFactories(ref: Reference, state: State): Seq[NetBeansTransformerFactory[RewriteRule]] =
     setting(NetBeansKeys.classpathTransformerFactories in ref, state).fold(

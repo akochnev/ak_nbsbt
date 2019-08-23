@@ -39,8 +39,7 @@ import sbt.{
   Value
 }
 
-import sbt.io.RichFile
-//import sbt.Load.BuildStructure
+import sbt.internal.BuildStructure
 import sbt.complete.Parser
 import scalaz.{ Equal, NonEmptyList, Validation => ScalazValidation }
 import scalaz.Scalaz._

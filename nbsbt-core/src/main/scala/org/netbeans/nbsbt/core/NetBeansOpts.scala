@@ -26,6 +26,8 @@ private object NetBeansOpts {
 
   val WithSource = "with-source"
 
+  val WithJavadoc = "with-javadoc"
+
   val UseProjectId = "use-project-id"
 
   val GenNetBeans = "gen-netbeans"

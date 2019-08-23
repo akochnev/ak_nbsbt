@@ -34,18 +34,34 @@ import sbt.Keys.{ baseDirectory, commands }
 import scala.util.control.Exception
 import scala.xml.{ Attribute, Elem, MetaData, Node, Null, Text }
 import scala.xml.transform.RewriteRule
-import scalariform.formatter.preferences.IFormattingPreferences
+// import scalariform.formatter.preferences.IFormattingPreferences
 
-object NetBeansPlugin extends NetBeansPlugin
-
-trait NetBeansPlugin {
+object NetBeansPlugin {
 
   def netbeansSettings: Seq[Setting[_]] = {
     import NetBeansKeys._
 
     Seq(
       commandName := "netbeans",
-      commands += NetBeans.netbeansCommand(commandName.value))
+      commands += { NetBeans.netbeansCommand(commandName.value) })
+  }
+
+  def buildNetBeansSettings: Seq[Setting[_]] = {
+    import NetBeansKeys._
+
+    Seq(
+      skipParents := true,
+      skipProject := true)
+  }
+
+  def globalNetBeansSettings: Seq[Setting[_]] = {
+    import NetBeansKeys._
+    Seq(
+      executionEnvironment := None,
+      useProjectId := false,
+      withSource := true,
+      withJavadoc := true,
+      relativizeLibs := true)
   }
 
   object NetBeansKeys {
@@ -63,14 +79,18 @@ trait NetBeansPlugin {
       prefix(WithSource),
       "Download and link sources for library dependencies?")
 
+    val withJavadoc: SettingKey[Boolean] = SettingKey(
+      prefix(WithJavadoc),
+      "Download and link javadoc for library dependencies?")
+
     val useProjectId: SettingKey[Boolean] = SettingKey(
       prefix(UseProjectId),
       "Use the sbt project id as the NetBeans project name?")
 
-    @deprecated("Use classpathTransformerFactories instead!", "2.1.0")
-    val classpathEntryTransformerFactory: SettingKey[NetBeansTransformerFactory[Seq[NetBeansClasspathEntry] => Seq[NetBeansClasspathEntry]]] = SettingKey(
-      prefix("classpathEntryTransformerFactory"),
-      "Creates a transformer for classpath entries.")
+    // @deprecated("Use classpathTransformerFactories instead!", "2.1.0")
+    // val classpathEntryTransformerFactory: SettingKey[NetBeansTransformerFactory[Seq[NetBeansClasspathEntry] => Seq[NetBeansClasspathEntry]]] = SettingKey(
+    //   prefix("classpathEntryTransformerFactory"),
+    //   "Creates a transformer for classpath entries.")
 
     val classpathTransformerFactories: SettingKey[Seq[NetBeansTransformerFactory[RewriteRule]]] = SettingKey(
       prefix("classpathTransformerFactory"),
@@ -117,6 +137,18 @@ trait NetBeansPlugin {
 
   object NetBeansExecutionEnvironment extends Enumeration {
 
+    val JavaSE13 = Value("JavaSE-13")
+
+    val JavaSE12 = Value("JavaSE-12")
+
+    val JavaSE11 = Value("JavaSE-11")
+
+    val JavaSE10 = Value("JavaSE-10")
+
+    val JavaSE9 = Value("JavaSE-9")
+
+    val JavaSE18 = Value("JavaSE-1.8")
+
     val JavaSE17 = Value("JavaSE-1.7")
 
     val JavaSE16 = Value("JavaSE-1.6")
@@ -131,7 +163,7 @@ trait NetBeansPlugin {
 
     val JRE11 = Value("JRE-1.1")
 
-    val valueSeq: Seq[Value] = JavaSE17 :: JavaSE16 :: J2SE15 :: J2SE14 :: J2SE13 :: J2SE12 :: JRE11 :: Nil
+    val valueSeq: Seq[Value] = JavaSE18 :: JavaSE17 :: JavaSE16 :: J2SE15 :: J2SE14 :: J2SE13 :: J2SE12 :: JRE11 :: Nil
   }
 
   sealed trait NetBeansClasspathEntry {
@@ -269,9 +301,9 @@ trait NetBeansPlugin {
 
       override def transform(node: Node): Seq[Node] = node match {
         case Elem(pf, CpEntry, attrs, scope, child @ _*) if isScalaLibrary(attrs) =>
-          Elem(pf, CpEntry, container(ScalaContainer), scope, child: _*)
+          Elem(pf, CpEntry, container(ScalaContainer), scope, child.isEmpty)
         case Elem(pf, CpEntry, attrs, scope, child @ _*) if isScalaCompiler(attrs) =>
-          Elem(pf, CpEntry, container(ScalaCompilerContainer), scope, child: _*)
+          Elem(pf, CpEntry, container(ScalaCompilerContainer), scope, child.isEmpty)
         case other =>
           other
       }
